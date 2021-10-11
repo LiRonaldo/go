@@ -11,6 +11,10 @@ import (
 	"unsafe"
 )
 
+// go语言开启协程很方便，当很多协程都创建相同对象的时候，会产生不必要的内存浪费
+// 并发⼤－占⽤内存⼤－GC 缓慢－处理并发能⼒降低－并发更⼤
+// 可以通过池化技术来解决。get（从pool拿对象，没有的话就通过New方法获得）， put（将对象放回pool）
+
 // A Pool is a set of temporary objects that may be individually saved and
 // retrieved.
 //
