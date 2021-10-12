@@ -227,17 +227,23 @@ func panicmemAddr(addr uintptr) {
 
 // Create a new deferred function fn, which has no arguments and results.
 // The compiler turns a defer statement into a call to this.
+// 碰见defer关键字时，会执行deferproc（）方法创建一个defer的结构体，并把值，defer后边的func赋值到
+// 新建的defer结构体上，当执行代码中的return语句完，会调用deferreturn()方法，循环去执行defer 后边的func()
+// 并且释放defer结构体。
 func deferproc(fn func()) {
+	// 获取当前g
 	gp := getg()
+	// 如果当前的g不是gp，throw
 	if gp.m.curg != gp {
 		// go code on the system stack can't defer
 		throw("defer on system stack")
 	}
-
+	// 新建defer结构体
 	d := newdefer()
 	if d._panic != nil {
 		throw("deferproc: d.panic != nil after newdefer")
 	}
+	// 赋值
 	d.link = gp._defer
 	gp._defer = d
 	d.fn = fn
@@ -253,6 +259,7 @@ func deferproc(fn func()) {
 	// the code the compiler generates always
 	// checks the return value and jumps to the
 	// end of the function if deferproc returns != 0.
+	// 返回调用defer 调用开始的地方。
 	return0()
 	// No code can go here - the C return register has
 	// been set and must not be clobbered.
@@ -308,18 +315,26 @@ func deferprocStack(d *_defer) {
 // added to any defer chain yet.
 func newdefer() *_defer {
 	var d *_defer
+	// 获取m
 	mp := acquirem()
+	// 获取m绑定的p
 	pp := mp.p.ptr()
+	// 如果p中的defer池==0并且全局的defer池！=nil
 	if len(pp.deferpool) == 0 && sched.deferpool != nil {
+		// 因为要操作全局的,所以要加锁
 		lock(&sched.deferlock)
+		// 一直从sched中拿defer放到p的defer池中，直到p的delfer池的长度==一半
 		for len(pp.deferpool) < cap(pp.deferpool)/2 && sched.deferpool != nil {
+			// 像链表一样一直拿
 			d := sched.deferpool
 			sched.deferpool = d.link
 			d.link = nil
 			pp.deferpool = append(pp.deferpool, d)
 		}
+		// 解锁
 		unlock(&sched.deferlock)
 	}
+	// 拿p的defer池中的最后一个
 	if n := len(pp.deferpool); n > 0 {
 		d = pp.deferpool[n-1]
 		pp.deferpool[n-1] = nil
@@ -328,6 +343,7 @@ func newdefer() *_defer {
 	releasem(mp)
 	mp, pp = nil, nil
 
+	// 如果上边没有拿到，则创建一个
 	if d == nil {
 		// Allocate new defer.
 		d = new(_defer)
@@ -405,10 +421,14 @@ func freedeferfn() {
 // deferreturn runs deferred functions for the caller's frame.
 // The compiler inserts a call to this at the end of any
 // function which calls defer.
+// deferreturn return 前调用
 func deferreturn() {
+	// 获取当前的g
 	gp := getg()
 	for {
+		// 获取与当前g 绑定的defer
 		d := gp._defer
+		// 循环出口
 		if d == nil {
 			return
 		}
@@ -428,11 +448,15 @@ func deferreturn() {
 			// frame, so we can just return.
 			return
 		}
-
+		// defer 后边跟的方法
 		fn := d.fn
+		// 置nil
 		d.fn = nil
+		// 从defer 连中获取下一个放到p的defer中
 		gp._defer = d.link
+		// 释放defer结构体
 		freedefer(d)
+		// 执行defer 后边的func()
 		fn()
 	}
 }
