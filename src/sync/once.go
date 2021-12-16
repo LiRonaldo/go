@@ -11,14 +11,17 @@ import (
 // Once is an object that will perform exactly one action.
 //
 // A Once must not be copied after first use.
+// 只允许执行一次func()
 type Once struct {
 	// done indicates whether the action has been performed.
 	// It is first in the struct because it is used in the hot path.
 	// The hot path is inlined at every call site.
 	// Placing done first allows more compact instructions on some architectures (amd64/386),
 	// and fewer instructions (to calculate offset) on other architectures.
+	// ==0说明没有执行过
 	done uint32
-	m    Mutex
+	//  锁，防止并发，多次执行
+	m Mutex
 }
 
 // Do calls the function f if and only if Do is being called for the
@@ -53,7 +56,7 @@ func (o *Once) Do(f func()) {
 	// waiting for the first's call to f to complete.
 	// This is why the slow path falls back to a mutex, and why
 	// the atomic.StoreUint32 must be delayed until after f returns.
-
+	// 原子判断== 0,说明没被执行过，所以执行doSlow()方法
 	if atomic.LoadUint32(&o.done) == 0 {
 		// Outlined slow-path to allow inlining of the fast-path.
 		o.doSlow(f)
@@ -61,9 +64,13 @@ func (o *Once) Do(f func()) {
 }
 
 func (o *Once) doSlow(f func()) {
+	// 加锁
 	o.m.Lock()
+	// 解锁
 	defer o.m.Unlock()
+	// 再次判断，防止并发，
 	if o.done == 0 {
+		// 将done设置成1，代表被执行过。
 		defer atomic.StoreUint32(&o.done, 1)
 		f()
 	}
