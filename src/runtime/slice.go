@@ -161,6 +161,9 @@ func panicunsafeslicelen() {
 // to calculate where to write new values during an append.
 // TODO: When the old backend is gone, reconsider this decision.
 // The SSA backend might prefer the new length or to return only ptr/cap and save stack space.
+// 假设old 是2个元素，要append 4个元素，新的slice的最小的cap是6，6>oldcap*2，所以就用6作为new slice cap.
+// 如果oldcap< 1024的话，就将oldcap*2 ，作为new slice cap
+// 如果 oldcap>1024的话，就 old*1.25作为新的 new slice cap
 func growslice(et *_type, old slice, cap int) slice {
 	if raceenabled {
 		callerpc := getcallerpc()
@@ -179,15 +182,17 @@ func growslice(et *_type, old slice, cap int) slice {
 		// We assume that append doesn't need to preserve old.array in this case.
 		return slice{unsafe.Pointer(&zerobase), old.len, cap}
 	}
-
+	// 如果新添加的元素之后总的的cap（也就是最小的能装下老的，新的元素的总和）> 2*oldcap的话，直接使用总的cap
 	newcap := old.cap
 	doublecap := newcap + newcap
 	if cap > doublecap {
 		newcap = cap
 	} else {
+		// 如果 扩容前的cap<1024的话，直接oldcap*2
 		if old.cap < 1024 {
 			newcap = doublecap
 		} else {
+			// cldcap增加1/4
 			// Check 0 < newcap to detect overflow
 			// and prevent an infinite loop.
 			for 0 < newcap && newcap < cap {
@@ -274,7 +279,7 @@ func growslice(et *_type, old slice, cap int) slice {
 		}
 	}
 	memmove(p, old.array, lenmem)
-
+	//  扩容好之后返回一个新的切片
 	return slice{p, old.len, newcap}
 }
 
