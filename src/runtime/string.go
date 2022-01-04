@@ -163,14 +163,21 @@ func slicebytetostringtmp(ptr *byte, n int) (str string) {
 	return
 }
 
+// []byte(string)
+// buf 是个 数组，定义的时候就初始化好了，所以buf永远不会为nil
+// 如果要转换的string的长度<=32
 func stringtoslicebyte(buf *tmpBuf, s string) []byte {
 	var b []byte
 	if buf != nil && len(s) <= len(buf) {
+		// 将tmpBuf的值赋值给了*buf（buf本身是个指针变量，里边是内存地址，加*之后是取出值来）
 		*buf = tmpBuf{}
+		// 赋值给b
 		b = buf[:len(s)]
 	} else {
+		// mallage申请一个长度为s的切片
 		b = rawbyteslice(len(s))
 	}
+	// 该方法将string的底层数组从头部复制n个到[]byte对应的底层数组中去（这里就是copy实现的核心方法，在汇编层面实现 源文件为memmove_*.s）
 	copy(b, s)
 	return b
 }
