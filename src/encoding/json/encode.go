@@ -356,6 +356,7 @@ func isEmptyValue(v reflect.Value) bool {
 	return false
 }
 
+//  根据不同的类型，调用不同的encoderFunc
 func (e *encodeState) reflectValue(v reflect.Value, opts encOpts) {
 	valueEncoder(v)(e, v, opts)
 }
@@ -372,6 +373,7 @@ type encoderFunc func(e *encodeState, v reflect.Value, opts encOpts)
 var encoderCache sync.Map // map[reflect.Type]encoderFunc
 
 func valueEncoder(v reflect.Value) encoderFunc {
+	// 如果v的类型不属于go语言定义的任何类型，直接返回
 	if !v.IsValid() {
 		return invalidValueEncoder
 	}
@@ -379,6 +381,7 @@ func valueEncoder(v reflect.Value) encoderFunc {
 }
 
 func typeEncoder(t reflect.Type) encoderFunc {
+	// 如果在sync map中找到的话，直接返回
 	if fi, ok := encoderCache.Load(t); ok {
 		return fi.(encoderFunc)
 	}
@@ -396,13 +399,16 @@ func typeEncoder(t reflect.Type) encoderFunc {
 		wg.Wait()
 		f(e, v, opts)
 	}))
+	// 缓存成功，直接返回fi.(encoderFunc)
 	if loaded {
 		return fi.(encoderFunc)
 	}
 
 	// Compute the real encoder and replace the indirect func with it.
+	// 根据t选择encoderFunc
 	f = newTypeEncoder(t, true)
 	wg.Done()
+	// 放到sync map中
 	encoderCache.Store(t, f)
 	return f
 }
@@ -419,12 +425,16 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 	// Marshaler with a value receiver, then we're better off taking
 	// the address of the value - otherwise we end up with an
 	// allocation as we cast the value to an interface.
+	// 如果t的类型不是指针，并且allowAddr是真，并且t实现了自定义的marshalerType，也就是重写了MarshalJSON方法
+	// 返回用户自己定义的转化方法
 	if t.Kind() != reflect.Ptr && allowAddr && reflect.PtrTo(t).Implements(marshalerType) {
 		return newCondAddrEncoder(addrMarshalerEncoder, newTypeEncoder(t, false))
 	}
 	if t.Implements(marshalerType) {
 		return marshalerEncoder
 	}
+	// 不等于指针，并且allowAddr是真，并且t实现了自定义的marshalerType，也就是重写了MarshalText方法
+	// 返回用户自定义的转化方法
 	if t.Kind() != reflect.Ptr && allowAddr && reflect.PtrTo(t).Implements(textMarshalerType) {
 		return newCondAddrEncoder(addrTextMarshalerEncoder, newTypeEncoder(t, false))
 	}
@@ -729,6 +739,7 @@ type structFields struct {
 	nameIndex map[string]int
 }
 
+// 循环遍历结构体的属性
 func (se structEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	next := byte('{')
 FieldLoop:
@@ -1410,10 +1421,12 @@ func dominantField(fields []field) (field, bool) {
 var fieldCache sync.Map // map[reflect.Type]structFields
 
 // cachedTypeFields is like typeFields but uses a cache to avoid repeated work.
+// 从sync map中获取structFields
 func cachedTypeFields(t reflect.Type) structFields {
 	if f, ok := fieldCache.Load(t); ok {
 		return f.(structFields)
 	}
+	// 没有从缓存中获得，就通过typeFields 方法获得，并存到缓存中
 	f, _ := fieldCache.LoadOrStore(t, typeFields(t))
 	return f.(structFields)
 }
