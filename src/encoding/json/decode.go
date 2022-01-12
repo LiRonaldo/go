@@ -92,7 +92,9 @@ import (
 // invalid UTF-16 surrogate pairs are not treated as an error.
 // Instead, they are replaced by the Unicode replacement
 // character U+FFFD.
-//
+// 反序列化 ,必须传入一个目标对象进行辅助
+// 传入map的话，int 类型会转化成float64，literalStore方法
+// map 是一点点解析出byte[]的内容，f是false，t是true，"开头的是string， 当是数字的时候，将数字转为string 在转为float64
 func Unmarshal(data []byte, v interface{}) error {
 	// Check for well-formedness.
 	// Avoids filling out half a data structure
@@ -102,7 +104,7 @@ func Unmarshal(data []byte, v interface{}) error {
 	if err != nil {
 		return err
 	}
-
+	// 将数据填充到d.data
 	d.init(data)
 	return d.unmarshal(v)
 }
@@ -167,9 +169,11 @@ func (e *InvalidUnmarshalError) Error() string {
 	return "json: Unmarshal(nil " + e.Type.String() + ")"
 }
 
+// undecode 目标对象必须传入指针类型
 func (d *decodeState) unmarshal(v interface{}) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		// 如果目标类型不是指针，或者是nil的话，返回错误。
 		return &InvalidUnmarshalError{reflect.TypeOf(v)}
 	}
 
@@ -251,6 +255,8 @@ func (d *decodeState) saveError(err error) {
 // addErrorContext returns a new error enhanced with information from d.errorContext
 func (d *decodeState) addErrorContext(err error) error {
 	if d.errorContext != nil && (d.errorContext.Struct != nil || len(d.errorContext.FieldStack) > 0) {
+		// err.(type)断言的是类型
+		// err 是要断言的目标的值,这个值是指针，所以给err赋值能影响到入参的err
 		switch err := err.(type) {
 		case *UnmarshalTypeError:
 			err.Struct = d.errorContext.Struct.Name()
@@ -474,6 +480,7 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
+		// 检查传入的目标对象v是不不是实现了自定义的方法
 		if v.Type().NumMethod() > 0 && v.CanInterface() {
 			if u, ok := v.Interface().(Unmarshaler); ok {
 				return u, nil, reflect.Value{}
@@ -499,6 +506,7 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 // The first byte of the array ('[') has been read already.
 func (d *decodeState) array(v reflect.Value) error {
 	// Check for unmarshaler.
+	// 检查
 	u, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
@@ -971,7 +979,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 				d.saveError(&UnmarshalTypeError{Value: "string", Type: v.Type(), Offset: int64(d.readIndex())})
 			}
 		}
-
+		//  转化为map的时候，value为数字类型的话，会走default
 	default: // number
 		if c != '-' && (c < '0' || c > '9') {
 			if fromQuoted {
@@ -992,6 +1000,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 				return fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type())
 			}
 			d.saveError(&UnmarshalTypeError{Value: "number", Type: v.Type(), Offset: int64(d.readIndex())})
+			// 命中这个case 然后convertNumber 这个方法将将string 类型的数字转化为float64，所以才会int类型最终变为float类型
 		case reflect.Interface:
 			n, err := d.convertNumber(s)
 			if err != nil {
