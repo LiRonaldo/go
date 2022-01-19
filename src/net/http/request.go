@@ -1020,11 +1020,13 @@ func ReadRequest(b *bufio.Reader) (*Request, error) {
 	return req, err
 }
 
+// 开始读请求
 func readRequest(b *bufio.Reader) (req *Request, err error) {
 	tp := newTextprotoReader(b)
 	req = new(Request)
 
 	// First line: GET /index.html HTTP/1.0
+	// 因为是get请求，所以只需要读第一行就行。下边有方法去读header里的信息。
 	var s string
 	if s, err = tp.ReadLine(); err != nil {
 		return nil, err
@@ -1037,6 +1039,7 @@ func readRequest(b *bufio.Reader) (req *Request, err error) {
 	}()
 
 	var ok bool
+	// 根据http协议解析第一行，返回 请求方法，url，协议版本。
 	req.Method, req.RequestURI, req.Proto, ok = parseRequestLine(s)
 	if !ok {
 		return nil, badStringError("malformed HTTP request", s)
@@ -1062,7 +1065,7 @@ func readRequest(b *bufio.Reader) (req *Request, err error) {
 	if justAuthority {
 		rawurl = "http://" + rawurl
 	}
-
+	//  解析url ，包括参数
 	if req.URL, err = url.ParseRequestURI(rawurl); err != nil {
 		return nil, err
 	}
@@ -1073,10 +1076,12 @@ func readRequest(b *bufio.Reader) (req *Request, err error) {
 	}
 
 	// Subsequent lines: Key: value.
+	// 处理请求头
 	mimeHeader, err := tp.ReadMIMEHeader()
 	if err != nil {
 		return nil, err
 	}
+	// 标准转化成header类型，源码里有好多这种写法：定义一个类型，将这个类型变量转化成这个类型。
 	req.Header = Header(mimeHeader)
 	if len(req.Header["Host"]) > 1 {
 		return nil, fmt.Errorf("too many Host headers")

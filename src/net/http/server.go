@@ -963,6 +963,7 @@ func (c *conn) readRequest(ctx context.Context) (w *response, err error) {
 		peek, _ := c.bufr.Peek(4) // ReadRequest will get err below
 		c.bufr.Discard(numLeadingCRorLF(peek))
 	}
+	// 解析请求
 	req, err := readRequest(c.bufr)
 	if err != nil {
 		if c.r.hitReadLimit() {
@@ -1814,7 +1815,7 @@ func (c *conn) serve(ctx context.Context) {
 			c.setState(c.rwc, StateClosed, runHooks)
 		}
 	}()
-
+	// https
 	if tlsConn, ok := c.rwc.(*tls.Conn); ok {
 		if d := c.server.ReadTimeout; d > 0 {
 			c.rwc.SetReadDeadline(time.Now().Add(d))
@@ -2436,6 +2437,7 @@ func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
 
 // Handle registers the handler for the given pattern.
 // If a handler already exists for pattern, Handle panics.
+// 用handler 这个接口接收，因为HandlerFunc 这个类型重新了handler 的方法。是是Handler的子类
 func (mux *ServeMux) Handle(pattern string, handler Handler) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
@@ -2480,10 +2482,12 @@ func appendSorted(es []muxEntry, e muxEntry) []muxEntry {
 }
 
 // HandleFunc registers the handler function for the given pattern.
+// handler 这个变量的类型是func类型，入参是ResponseWriter，*Request
 func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Request)) {
 	if handler == nil {
 		panic("http: nil handler")
 	}
+	// 将handler这个变量 转成HandlerFunc 这个类型，因为同是func 入参又是一样的。可以认为是同一个类型
 	mux.Handle(pattern, HandlerFunc(handler))
 }
 
@@ -3011,6 +3015,7 @@ func (srv *Server) Serve(l net.Listener) error {
 		rw, err := l.Accept()
 		if err != nil {
 			select {
+			// 如果连接关闭了。返回。
 			case <-srv.getDoneChan():
 				return ErrServerClosed
 			default:
@@ -3040,6 +3045,7 @@ func (srv *Server) Serve(l net.Listener) error {
 		tempDelay = 0
 		c := srv.newConn(rw)
 		c.setState(c.rwc, StateNew, runHooks) // before Serve can return
+		// 每监听到一个请求，就开启一个协程去处理
 		go c.serve(connCtx)
 	}
 }
@@ -3189,6 +3195,10 @@ func logf(r *Request, format string, args ...interface{}) {
 // The handler is typically nil, in which case the DefaultServeMux is used.
 //
 // ListenAndServe always returns a non-nil error.
+// 这个是主方法，监控这个端口号，只要请求这个端口号，就会执行Handler 逻辑方法，
+// HandleFunc(pattern string, handler func(ResponseWriter, *Request)) 这个方法是针对某个path进行处理的。
+// ListenAndServe 是个总的，针对端口。HandleFunc针对的是path，某一个具体的请求
+// gin 框架从这里开始封装，将*Engine传入，具体的逻辑在engine中实现。
 func ListenAndServe(addr string, handler Handler) error {
 	server := &Server{Addr: addr, Handler: handler}
 	return server.ListenAndServe()
